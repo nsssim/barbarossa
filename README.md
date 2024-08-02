@@ -1,2 +1,0 @@
-# barbarossa
-DZ Linux Distribution
