@@ -2,6 +2,10 @@
 
 # F-Secure Linux Security Installation Script for Debian
 
+# Define the base URL and the pattern for the package
+BASE_URL="https://download.f-secure.com/corpro/ls/current/"
+PACKAGE_PATTERN="fsls-[0-9]+\.[0-9]+\.[0-9]+-rtm\.tar\.gz"
+
 # Check if the script is run as root
 if [ "$(id -u)" != "0" ]; then
     echo "This script must be run as root" 1>&2
@@ -13,23 +17,49 @@ if [ "$(id -u)" != "0" ]; then
     sudo su
 fi
 
-# Set the target download URL
-TARGET="fsls-11.10.68-rtm.tar.gz"
+# Fetch the list of available packages
+AVAILABLE_PACKAGE=$(curl -s $BASE_URL | grep -oP "$PACKAGE_PATTERN" | head -1)
 
-# Check if the package is already downloaded
-if [ ! -f "$TARGET" ]; then 
-    wget https://download.f-secure.com/corpro/ls/current/$TARGET
+# Define the target file name and current version file
+TARGET="${BASE_URL}${AVAILABLE_PACKAGE}"
+CURRENT_VERSION_FILE="/var/lib/fsecure/current_version.txt"
+
+# Check if current version file exists and read the current version
+if [ -f "$CURRENT_VERSION_FILE" ]; then
+    CURRENT_VERSION=$(cat $CURRENT_VERSION_FILE)
+else
+    CURRENT_VERSION=""
 fi
 
-# Unpack the package
-tar zxvf $TARGET
+# Compare versions and update if a new version is available
+if [ "$AVAILABLE_PACKAGE" != "$CURRENT_VERSION" ]; then
+    echo "New version available: $AVAILABLE_PACKAGE"
 
-# Navigate into the extracted folder
-FOLDER="fsls-11.10.68-rtm"
-cd $FOLDER
+    # Download the new package
+    wget "$TARGET" -O /tmp/fsecure_update.tar.gz
 
-# Change permissions to make the installation script executable
-chmod u+x fsls-11.10.68
+    # Unpack the package
+    tar zxvf /tmp/fsecure_update.tar.gz -C /tmp
+
+    # Navigate into the extracted folder
+    FOLDER=$(echo $AVAILABLE_PACKAGE | awk -F "-" '{print $1"-"$2}')
+    cd /tmp/$FOLDER
+
+    # Change permissions to make the installation script executable
+    chmod u+x fsls-*
+
+    # Install the package
+    ./fsls-*
+
+    # Update the current version record
+    echo "$AVAILABLE_PACKAGE" > $CURRENT_VERSION_FILE
+
+    # Clean up
+    rm /tmp/fsecure_update.tar.gz
+    rm -rf /tmp/$FOLDER
+else
+    echo "No new version available."
+fi
 
 # Identify the architecture
 ARCH=$(uname -m)
@@ -46,5 +76,5 @@ else
     apt-get install -y linux-headers-$(uname -r) gcc patch make rpm dkms libstdc++6 libpam-modules zlib1g build-essential
 fi
 
-# Run the F-Secure installation package
-./fsls-11.10.68
+# Final cleanup
+echo "Installation and update process completed."
